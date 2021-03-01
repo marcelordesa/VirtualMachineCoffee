@@ -1,0 +1,155 @@
+﻿@page "/"
+@using VirtualMachineCoffee.App.Shared.Domians.Entities
+@using Microsoft.JSInterop
+@inject HttpClient Http
+
+<h4>Escolha seu café:</h4>
+
+@if (Coffees == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    @foreach (var coffee in Coffees)
+    {
+        <input type="radio" id="@coffee.Id" name="coffeeDescription" value="@coffee" @onclick="() => GetValueCoffee(coffee)">
+        <label for="@coffee.Id">@coffee.Description</label>
+        <br />
+    }
+}
+
+<h6>Valor do café: @(coffee != null? coffee.ValueCoffee.ToString("C") : 0.00M)</h6>
+<br />
+<h5>Deposite as moedas:</h5>
+
+<button class="btn btn-warning" style="margin-right:15px;" @onclick="IncrementCoinOneCents">R$ 0,01</button>
+<button class="btn btn-warning" style="margin-right:15px;" @onclick="IncrementCoinFiveCents">R$ 0,05</button>
+<button class="btn btn-warning" style="margin-right:15px;" @onclick="IncrementCoinTenCents">R$ 0,10</button>
+<button class="btn btn-warning" style="margin-right:15px;" @onclick="IncrementCoinTwentyFiveCents">R$ 0,25</button>
+<button class="btn btn-warning" style="margin-right:15px;" @onclick="IncrementCoinFiftyCents">R$ 0,50</button>
+<button class="btn btn-warning" style="margin-right:15px;" @onclick="IncrementCoinOneReals">R$ 1,00</button>
+
+<br />
+<p style="color:red;font-weight:bold;">@MessageError</p>
+
+<h6>Valor pago: @(CoinsPay.Sum().ToString("C"))</h6>
+<br />
+<button type="submit" class="btn btn-outline-success" style="margin-right:15px;" @onclick="ConfirmOperation">Efetuar a compra</button>
+<button type="submit" class="btn btn-outline-warning" style="margin-right:15px;" @onclick="NewOperation">Nova a compra</button>
+<br />
+<br />
+<p style="color:green;font-weight:bold;">@MessageReturn</p>
+<h6>Troco em moedas: @(ReturnCoinsPay.Sum().ToString("C"))</h6>
+
+@foreach (var itemCoin in ReturnCoinsPay)
+{
+    <button class="btn btn-warning" style="margin-right:15px;">@(itemCoin.ToString("C"))</button>
+}
+
+@code {
+    private List<decimal> CoinsPay = new List<decimal>();
+    private string MessageError = string.Empty;
+    private string MessageReturn = string.Empty;
+    private Coffee coffee = null;
+    private List<decimal> ReturnCoinsPay = new List<decimal>();
+    private Coffee[] Coffees;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await Http.GetAsync("api/Coffee");
+
+        if (result.StatusCode == System.Net.HttpStatusCode.OK)
+            Coffees = await result.Content.ReadFromJsonAsync<Coffee[]>();
+        else
+            Coffees = new Coffee[0];
+    }
+
+    private void GetValueCoffee(Coffee _coffee)
+    {
+        coffee = _coffee;
+    }
+
+    private async Task ConfirmOperation()
+    {
+        if (coffee == null)
+        {
+            MessageError = "Selecione um produto.";
+            return;
+        }
+
+        if (CoinsPay.Sum() < coffee.ValueCoffee)
+        {
+            MessageError = "Valor pago é menor que o valor do produto selecionado.";
+            return;
+        }
+
+        Order order = new Order(coffee, CoinsPay);
+
+        if (!string.IsNullOrEmpty(order.MessageError))
+        {
+            MessageError = order.MessageError;
+            return;
+        }
+
+        MessageError = string.Empty;
+
+        var returnCoin = await Http.PostAsJsonAsync("/api/Order/", order);
+
+        if (returnCoin.StatusCode == System.Net.HttpStatusCode.OK)
+        {
+            MessageReturn = "Ordem efetivada com sucesso";
+            ReturnCoinsPay = await returnCoin.Content.ReadFromJsonAsync<List<decimal>>();
+        }
+        else
+        {
+            ReturnCoinsPay = new List<decimal>();
+            MessageError = "Erro ao efetivar a ordem.";
+        }
+    }
+
+    private void NewOperation()
+    {
+        CoinsPay = new List<decimal>();
+        MessageError = string.Empty;
+        coffee = null;
+        ReturnCoinsPay = new List<decimal>();
+        MessageReturn = string.Empty;
+    }
+
+    private void IncrementCoinOneCents()
+    {
+        MessageError = "Não é aceito moedas de 1 centavo.";
+        return;
+    }
+
+    private void IncrementCoinFiveCents()
+    {
+        MessageError = "Não é aceito moedas de 5 centavos.";
+        return;
+    }
+
+    private void IncrementCoinTenCents()
+    {
+        MessageError = string.Empty;
+        CoinsPay.Add(CoinsType.TenCents);
+    }
+
+    private void IncrementCoinTwentyFiveCents()
+    {
+        MessageError = string.Empty;
+        CoinsPay.Add(CoinsType.TwentyFiveCents);
+    }
+
+    private void IncrementCoinFiftyCents()
+    {
+        MessageError = string.Empty;
+        CoinsPay.Add(CoinsType.FiftyCents);
+    }
+
+    private void IncrementCoinOneReals()
+    {
+        MessageError = string.Empty;
+        CoinsPay.Add(CoinsType.OneReals);
+    }
+}
